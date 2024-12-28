@@ -3,7 +3,7 @@ import { ApiTags, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { SignupDto } from './dto/signup.dto';
 import { SignupService } from './signup.service';
 
-@ApiTags('/signup') 
+@ApiTags('인증/인가') 
 @Controller('signup')
 export class SignupController {
   constructor(private readonly signupService: SignupService) {}

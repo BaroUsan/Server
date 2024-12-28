@@ -4,11 +4,13 @@ import { Model } from 'mongoose';
 import { SigninDto } from './dto/signin.dto';
 import { User, UserDocument } from '../signup/schemas/signup.schema';
 import * as bcrypt from 'bcrypt';
+import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class SigninService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly authService: AuthService,
   ) {}
 
   async signin(signinDto: SigninDto) {
@@ -22,6 +24,9 @@ export class SigninService {
       throw new UnauthorizedException('이메일 또는 비밀번호가 잘못되었습니다.');
     }
 
-    return { message: '로그인 성공', user: { email: user.email, name: user.name } };
+    const accessToken = await this.authService.generateAccessToken(user); 
+    const refreshToken = await this.authService.generateRefreshToken(user);
+
+    return { message: '로그인 성공', accessToken, refreshToken }; 
   }
 }

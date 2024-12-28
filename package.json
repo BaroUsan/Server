@@ -22,6 +22,7 @@
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
+    "@nestjs/jwt": "^10.2.0",
     "@nestjs/mongoose": "^10.1.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^8.1.0",
@@ -31,6 +32,8 @@
     "crypt": "^0.0.2",
     "dotenv": "^16.4.7",
     "mongoose": "^8.9.2",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1"
