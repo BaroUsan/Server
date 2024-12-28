@@ -33,6 +33,7 @@
     "crypt": "^0.0.2",
     "dotenv": "^16.4.7",
     "mongoose": "^8.9.2",
+    "mqtt": "^5.10.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.0",

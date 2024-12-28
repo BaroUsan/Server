@@ -1,10 +1,10 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SignupModule } from './signup/signup.module';
 import { SigninModule } from './signin/signin.module';
 import { AuthModule } from './auth/auth.module'; 
 import { ConfigModule } from '@nestjs/config'; 
+import { UmbModule } from './umb/umb.module';
 
 @Module({
   imports: [
@@ -13,6 +13,7 @@ import { ConfigModule } from '@nestjs/config';
     SignupModule,
     SigninModule,
     AuthModule,
+    UmbModule,
   ],
 })
 export class AppModule {}
