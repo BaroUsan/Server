@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { SignupDto } from './dto/signup.dto';
@@ -11,6 +11,11 @@ export class SignupService {
   ) {}
 
   async signup(signupDto: SignupDto) {
+    const existingUser = await this.userModel.findOne({ email: signupDto.email });
+    if (existingUser) {
+      throw new ConflictException('이미 사용 중인 이메일입니다.'); 
+    }
+
     const createdUser = new this.userModel(signupDto);
     await createdUser.save();
     return { message: '회원가입 성공', user: createdUser };
