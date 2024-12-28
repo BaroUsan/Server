@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { SignupDto } from './dto/signup.dto';
 import { User, UserDocument } from './schemas/signup.schema';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SignupService {
@@ -13,7 +14,7 @@ export class SignupService {
   async signup(signupDto: SignupDto) {
     const emailDomain = signupDto.email.split('@')[1];
     if (emailDomain !== 'bssm.hs.kr') {
-      throw new BadRequestException('bssm.hs.kr 학교 이메일만 회원가입이 가능합니다.'); 
+      throw new BadRequestException('bssm.hs.kr 학교 이메일만 회원가입이 가능합니다.');
     }
 
     const existingUser = await this.userModel.findOne({ email: signupDto.email });
@@ -21,7 +22,8 @@ export class SignupService {
       throw new ConflictException('이미 사용 중인 이메일입니다.');
     }
 
-    const createdUser = new this.userModel(signupDto);
+    const hashedPassword = await bcrypt.hash(signupDto.password, 10);
+    const createdUser = new this.userModel({ ...signupDto, password: hashedPassword }); 
     await createdUser.save();
     return { message: '회원가입 성공', user: createdUser };
   }
