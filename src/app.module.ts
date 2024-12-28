@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { MongooseModule } from '@nestjs/mongoose';
 import { SignupModule } from './signup/signup.module';
-import { SigninModule } from './signin/signin.module';
-import { UmbModule } from './umb/umb.module';
-import { MypageModule } from './mypage/mypage.module';
+import * as dotenv from 'dotenv';
+
+dotenv.config(); 
 
 @Module({
-  imports: [SignupModule, SigninModule, UmbModule, MypageModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    MongooseModule.forRoot(process.env.MONGODB_URI),
+    SignupModule,
+  ],
 })
 export class AppModule {}
