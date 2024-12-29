@@ -12,4 +12,4 @@ export class UmbController {
   async getStatus() {
     return this.umbService.getStatus();
   }
-}
+} 

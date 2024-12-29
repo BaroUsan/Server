@@ -5,6 +5,7 @@ import { SigninModule } from './signin/signin.module';
 import { AuthModule } from './auth/auth.module'; 
 import { ConfigModule } from '@nestjs/config'; 
 import { UmbModule } from './umb/umb.module';
+import { BorrowModule } from './borrow/borrow.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { UmbModule } from './umb/umb.module';
     SigninModule,
     AuthModule,
     UmbModule,
+    BorrowModule,
   ],
 })
 export class AppModule {}
