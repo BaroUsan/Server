@@ -6,6 +6,7 @@ import { User } from './schemas/user.schema';
 import * as mqtt from 'mqtt';
 import { ConfigService } from '@nestjs/config';
 import { MqttClient } from 'mqtt';
+import { BorrowHistory } from './schemas/borrow-history.schema';
 
 @Injectable()
 export class BorrowService implements OnModuleInit {
@@ -17,6 +18,7 @@ export class BorrowService implements OnModuleInit {
   constructor(
     @InjectModel(Status.name) private statusModel: Model<Status>,
     @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(BorrowHistory.name) private borrowHistoryModel: Model<BorrowHistory>,
     private configService: ConfigService,
   ) {
     const brokerUrl = this.configService.get<string>('MQTT_BROKER_URL');
@@ -182,13 +184,19 @@ export class BorrowService implements OnModuleInit {
           `(${change.oldValue} → ${change.newValue})`
         );
 
-        if (change.newValue === 0) { 
+        if (change.newValue === 0) {
           await this.userModel.updateOne(
             { email: this.lastRfidUser },
             { $addToSet: { borrowedItems: change.umbrellaNumber } }
           );
+          
+          await this.borrowHistoryModel.create({
+            email: this.lastRfidUser,
+            umbrellaNumber: change.umbrellaNumber,
+          });
+          
           this.logger.log(`${this.lastRfidUser}가 ${change.umbrellaNumber}번 우산을 대여했습니다`);
-        } else { 
+        } else {
           await this.userModel.updateOne(
             { email: this.lastRfidUser },
             { $pull: { borrowedItems: change.umbrellaNumber } }
