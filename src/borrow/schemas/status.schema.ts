@@ -1,18 +1,21 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-@Schema()
-export class Status extends Document {
-  @Prop({ type: [Number], required: true })
-  status: number[]; 
+export type StatusDocument = Status & Document;
 
-  @Prop({ default: Date.now })
-  updatedAt: Date;
+@Schema()
+export class Status {
+  @Prop({ required: true })
+  umbrellaNumber: number;
+
+  @Prop({ required: true })
+  status: number;
+
+  @Prop({ required: true })
+  startDate: Date;
+
+  @Prop({ required: true })
+  endDate: Date;
 }
 
 export const StatusSchema = SchemaFactory.createForClass(Status);
-
-StatusSchema.pre('save', function (next) {
-  this.updatedAt = new Date();
-  next();
-});

@@ -12,6 +12,7 @@ export class BorrowService implements OnModuleInit {
   private client: MqttClient;
   private lastRfidUser: string | null = null;
   private readonly logger = new Logger(BorrowService.name);
+  private currentStatus: number[] = [];
 
   constructor(
     @InjectModel(Status.name) private statusModel: Model<Status>,
@@ -35,7 +36,27 @@ export class BorrowService implements OnModuleInit {
     });
   }
 
-  onModuleInit() {
+  async onModuleInit() {
+    try {
+      const statusDocs = await this.statusModel.find()
+        .sort({ umbrellaNumber: 1 }) 
+        .exec();
+      this.currentStatus = statusDocs.map(doc => doc.status);
+      
+      this.logger.log('MongoDB에서 가져온 우산 상태:');
+      statusDocs.forEach(doc => {
+        this.logger.log(
+          `우산 ${doc.umbrellaNumber}번: ` +
+          `상태=${doc.status}, ` 
+
+        );
+      });
+
+    } catch (error) {
+      this.logger.error('초기 상태 로드 중 오류:', error.message);
+      throw error; 
+    }
+
     const rfidTopic = this.configService.get<string>('MQTT_TOPIC_RFID');
     const statusTopic = this.configService.get<string>('MQTT_TOPIC');
 
@@ -65,8 +86,40 @@ export class BorrowService implements OnModuleInit {
     });
   }
 
+  async getAllBorrowStatus() {
+    try {
+      const users = await this.userModel
+        .find({ 
+          borrowedItems: { 
+            $exists: true, 
+            $ne: [] 
+          }
+        })
+        .select('email borrowedItems -_id')
+        .lean()
+        .exec();
+
+      return users.map(user => ({
+        email: user.email,
+        borrowedUmbrellas: user.borrowedItems
+      }));
+    } catch (error) {
+      this.logger.error('대여 상태 조회 중 오류:', error);
+      throw error;
+    }
+  }
+
+  async getCurrentStatus() {
+    try {
+      return this.currentStatus;
+    } catch (error) {
+      this.logger.error('우산 상태 조회 중 오류:', error);
+      throw error;
+    }
+  }
+
   private checkRfidMatch(message: Buffer): boolean {
-    const rfidPattern = "0x23 0x24 0x24 0xC6";
+    const rfidPattern = '0x23 0x24 0x24 0xC6';
     const receivedMessage = message.toString().trim();
     this.logger.log(`RFID 패턴 비교 - 수신: "${receivedMessage}", 기대값: "${rfidPattern}"`);
     return receivedMessage === rfidPattern;
@@ -88,73 +141,80 @@ export class BorrowService implements OnModuleInit {
   }
 
   private async handleStatusMessage(message: Buffer) {
-    this.logger.log(`상태 데이터 수신: ${message.toString()}`);
     if (!this.lastRfidUser) {
       this.logger.warn('RFID 인증된 사용자가 없습니다');
       return;
     }
 
     try {
-      const newStatus = message.toString().split(',').map(Number);
-      this.logger.log(`파싱된 상태 업데이트: ${newStatus.join(',')}`);
-      
-      const currentStatus = await this.statusModel.findOne().exec();
-      if (!currentStatus) {
-        this.logger.warn('현재 상태 정보를 찾을 수 없습니다');
+      const newStatus = message
+        .toString()
+        .split(',')
+        .map((val) => parseInt(val.trim(), 10))
+        .filter((val) => !isNaN(val));
+
+      this.logger.log(`새로 수신된 상태: [${newStatus.join(', ')}]`);
+      this.logger.log(`현재 저장된 상태: [${this.currentStatus.join(', ')}]`);
+
+      const changes = [];
+      for (let i = 0; i < Math.max(this.currentStatus.length, newStatus.length); i++) {
+        const oldValue = this.currentStatus[i] ?? 1;
+        const newValue = newStatus[i] ?? 1;
+        
+        if (oldValue !== newValue) {
+          changes.push({ 
+            umbrellaNumber: i + 1,
+            oldValue,
+            newValue,
+            action: newValue === 0 ? '대여' : '반납'
+          });
+        }
+      }
+
+      if (changes.length === 0) {
+        this.logger.log('상태 변경사항이 없습니다');
         return;
       }
 
-      const changes = this.findStatusChanges(currentStatus.status, newStatus);
-      if (changes.length > 0) {
-        const user = await this.userModel.findOne({ email: this.lastRfidUser }).exec();
-        if (!user) {
-          this.logger.warn(`사용자를 찾을 수 없습니다: ${this.lastRfidUser}`);
-          return;
-        }
+      for (const change of changes) {
+        this.logger.log(
+          `우산 ${change.umbrellaNumber}번: ${change.action} ` +
+          `(${change.oldValue} → ${change.newValue})`
+        );
 
-        for (const change of changes) {
-          const umbrellaNumber = change.index + 1; 
-          
-          if (change.newValue === 1) { 
-            await this.userModel.updateOne(
-              { email: this.lastRfidUser },
-              { $pull: { borrowedItems: umbrellaNumber } }
-            ).exec();
-            this.logger.log(`사용자 ${user.email}가 ${umbrellaNumber}번 우산을 반납했습니다`);
-          } else { 
-            await this.userModel.updateOne(
-              { email: this.lastRfidUser },
-              { $addToSet: { borrowedItems: umbrellaNumber } }
-            ).exec();
-            this.logger.log(`사용자 ${user.email}가 ${umbrellaNumber}번 우산을 대여했습니다`);
-          }
+        if (change.newValue === 0) { 
+          await this.userModel.updateOne(
+            { email: this.lastRfidUser },
+            { $addToSet: { borrowedItems: change.umbrellaNumber } }
+          );
+          this.logger.log(`${this.lastRfidUser}가 ${change.umbrellaNumber}번 우산을 대여했습니다`);
+        } else { 
+          await this.userModel.updateOne(
+            { email: this.lastRfidUser },
+            { $pull: { borrowedItems: change.umbrellaNumber } }
+          );
+          this.logger.log(`${this.lastRfidUser}가 ${change.umbrellaNumber}번 우산을 반납했습니다`);
         }
-
-        await this.statusModel.updateOne({}, { status: newStatus }).exec();
-        
-        const updatedUser = await this.userModel.findOne({ email: this.lastRfidUser }).exec();
-        this.logger.log(`사용자의 현재 대여 중인 우산: ${updatedUser.borrowedItems.join(', ')}번`);
-      } else {
-        this.logger.log('상태 변경사항이 없습니다');
       }
+
+      this.currentStatus = newStatus;
+
+      await this.statusModel.updateOne(
+        {},
+        { $set: { status: newStatus } },
+        { upsert: true }
+      );
+
+      const updatedUser = await this.userModel.findOne({ email: this.lastRfidUser }).exec();
+      this.logger.log(
+        `사용자의 현재 대여 중인 우산: ${
+          updatedUser?.borrowedItems?.length > 0 
+            ? updatedUser.borrowedItems.join(', ') + '번' 
+            : '없음'
+        }`
+      );
     } catch (error) {
       this.logger.error('상태 메시지 처리 중 오류 발생:', error);
-    } finally {
-      this.lastRfidUser = null;
     }
-  }
-
-  private findStatusChanges(oldStatus: number[], newStatus: number[]) {
-    const changes = [];
-    for (let i = 0; i < oldStatus.length; i++) {
-      if (oldStatus[i] !== newStatus[i]) {
-        changes.push({
-          index: i,
-          oldValue: oldStatus[i],
-          newValue: newStatus[i]
-        });
-      }
-    }
-    return changes;
   }
 }
