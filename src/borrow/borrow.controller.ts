@@ -2,13 +2,13 @@ import { Controller, Post, Param, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BorrowService } from './borrow.service';
 
-@ApiTags('borrow')
+@ApiTags('우산 대여/반납')
 @Controller('borrow')
 export class BorrowController {
   constructor(private readonly borrowService: BorrowService) {}
 
-  @Post('borrow/:umbrellaNumber')
-  @ApiOperation({ summary: '우산 대여하기' })
+  @Post(':umbrellaNumber')
+  @ApiOperation({ summary: '우산 대여' })
   @ApiResponse({
     status: 200,
     description: '우산 대여 성공',
@@ -29,13 +29,13 @@ export class BorrowController {
   })
   async borrowUmbrella(@Param('umbrellaNumber') umbrellaNumber: number) {
     if (!this.borrowService.lastRfidUser) {
-      throw new UnauthorizedException('RFID 인증이 필요합니다');
+      throw new UnauthorizedException('사용자 인증이 필요합니다');
     }
     return this.borrowService.borrowUmbrella(this.borrowService.lastRfidUser, umbrellaNumber);
   }
 
   @Post('return/:umbrellaNumber')
-  @ApiOperation({ summary: '우산 반납하기' })
+  @ApiOperation({ summary: '우산 반납' })
   @ApiResponse({
     status: 200,
     description: '우산 반납 성공',
@@ -56,7 +56,7 @@ export class BorrowController {
   })
   async returnUmbrella(@Param('umbrellaNumber') umbrellaNumber: number) {
     if (!this.borrowService.lastRfidUser) {
-      throw new UnauthorizedException('RFID 인증이 필요합니다');
+      throw new UnauthorizedException('사용자 인증이 필요합니다');
     }
     return this.borrowService.returnUmbrella(this.borrowService.lastRfidUser, umbrellaNumber);
   }

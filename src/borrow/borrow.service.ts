@@ -115,7 +115,6 @@ export class BorrowService implements OnModuleInit {
         throw new BadRequestException('이미 대여 중인 우산입니다');
       }
 
-      // 상태 업데이트
       this.currentStatus[umbrellaNumber - 1] = 0;
       await this.statusModel.updateOne(
         { umbrellaNumber },
