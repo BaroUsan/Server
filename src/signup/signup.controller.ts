@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiTags, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiResponse, ApiBody, ApiOperation } from '@nestjs/swagger';
 import { SignupDto } from './dto/signup.dto';
 import { SignupService } from './signup.service';
 
@@ -9,6 +9,7 @@ export class SignupController {
   constructor(private readonly signupService: SignupService) {}
 
   @Post()
+  @ApiOperation({ summary: '회원가입' })
   @ApiBody({ 
     type: SignupDto, 
     description: '회원가입 정보', 
