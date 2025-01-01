@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Post, Param, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BorrowService } from './borrow.service';
 
@@ -7,48 +7,57 @@ import { BorrowService } from './borrow.service';
 export class BorrowController {
   constructor(private readonly borrowService: BorrowService) {}
 
-  @Get()
-  @ApiOperation({ summary: '대여 서비스 정보 가져오기' })
-  getBorrowInfo() {
-    return { message: 'Borrow service information' };
-  }
-
-  @Get('status/borrowed')
-  @ApiOperation({ summary: '현재 대여 중인 우산 정보 조회' })
+  @Post('borrow/:umbrellaNumber')
+  @ApiOperation({ summary: '우산 대여하기' })
   @ApiResponse({
     status: 200,
-    description: '사용자별 대여 중인 우산 목록',
+    description: '우산 대여 성공',
     schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          email: { type: 'string', example: '2@bssm.hs.kr' },
-          borrowedUmbrellas: { 
-            type: 'array', 
-            items: { type: 'number' },
-            example: [1, 3] 
-          }
-        }
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        email: { type: 'string' },
+        umbrellaNumber: { type: 'number' },
+        borrowedUmbrellas: { 
+          type: 'array',
+          items: { type: 'number' }
+        },
+        updatedAt: { type: 'string', format: 'date-time' }
       }
     }
   })
-  async getBorrowStatus() {
-    return this.borrowService.getAllBorrowStatus();
+  async borrowUmbrella(@Param('umbrellaNumber') umbrellaNumber: number) {
+    if (!this.borrowService.lastRfidUser) {
+      throw new UnauthorizedException('RFID 인증이 필요합니다');
+    }
+    return this.borrowService.borrowUmbrella(this.borrowService.lastRfidUser, umbrellaNumber);
   }
 
-  @Get('status/umbrellas')
-  @ApiOperation({ summary: '전체 우산 상태 조회' })
+  @Post('return/:umbrellaNumber')
+  @ApiOperation({ summary: '우산 반납하기' })
   @ApiResponse({
     status: 200,
-    description: '우산 상태 배열 (0: 대여 중, 1: 보관 중)',
+    description: '우산 반납 성공',
     schema: {
-      type: 'array',
-      items: { type: 'number' },
-      example: [1, 0, 1, 1, 0]
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        email: { type: 'string' },
+        umbrellaNumber: { type: 'number' },
+        borrowedUmbrellas: { 
+          type: 'array',
+          items: { type: 'number' }
+        },
+        updatedAt: { type: 'string', format: 'date-time' }
+      }
     }
   })
-  async getUmbrellaStatus() {
-    return this.borrowService.getCurrentStatus();
+  async returnUmbrella(@Param('umbrellaNumber') umbrellaNumber: number) {
+    if (!this.borrowService.lastRfidUser) {
+      throw new UnauthorizedException('RFID 인증이 필요합니다');
+    }
+    return this.borrowService.returnUmbrella(this.borrowService.lastRfidUser, umbrellaNumber);
   }
 }

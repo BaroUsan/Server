@@ -3,14 +3,14 @@ import { Document } from 'mongoose';
 
 @Schema()
 export class BorrowHistory extends Document {
-  @Prop({ required: true })
+  @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true })
-  umbrellaNumber: number;
+  @Prop({ type: [Number], default: [] })
+  borrowedUmbrellas: number[];
 
   @Prop({ required: true, default: Date.now })
-  borrowedAt: Date;
+  updatedAt: Date;
 }
 
 export const BorrowHistorySchema = SchemaFactory.createForClass(BorrowHistory); 
