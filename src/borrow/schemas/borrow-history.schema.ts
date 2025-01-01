@@ -9,6 +9,15 @@ export class BorrowHistory extends Document {
   @Prop({ type: [Number], default: [] })
   borrowedUmbrellas: number[];
 
+  @Prop({ type: Map, of: Date })
+  borrowDates: Map<string, Date>;
+
+  @Prop({ type: Map, of: Date })
+  dueDates: Map<string, Date>;
+
+  @Prop({ type: [Number], default: [] })
+  overdueUmbrellas: number[];
+
   @Prop({ required: true, default: Date.now })
   updatedAt: Date;
 }

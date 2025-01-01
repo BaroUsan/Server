@@ -104,6 +104,26 @@ export class BorrowService implements OnModuleInit {
     }
   }
 
+  private async checkOverdueStatus(email: string) {
+    const history = await this.borrowHistoryModel.findOne({ email });
+    if (!history) return;
+
+    const now = new Date();
+    const overdue: number[] = [];
+
+    history.borrowedUmbrellas.forEach(umbrellaNumber => {
+      const dueDate = history.dueDates?.get(umbrellaNumber.toString());
+      if (dueDate && now > dueDate) {
+        overdue.push(umbrellaNumber);
+      }
+    });
+
+    await this.borrowHistoryModel.updateOne(
+      { email },
+      { $set: { overdueUmbrellas: overdue } }
+    );
+  }
+
   async borrowUmbrella(email: string, umbrellaNumber: number) {
     try {
       const user = await this.userModel.findOne({ email }).exec();
@@ -114,6 +134,10 @@ export class BorrowService implements OnModuleInit {
       if (this.currentStatus[umbrellaNumber - 1] === 0) {
         throw new BadRequestException('이미 대여 중인 우산입니다');
       }
+
+      const borrowDate = new Date();
+      const dueDate = new Date(borrowDate);
+      dueDate.setDate(dueDate.getDate() + 3);
 
       this.currentStatus[umbrellaNumber - 1] = 0;
       await this.statusModel.updateOne(
@@ -131,12 +155,16 @@ export class BorrowService implements OnModuleInit {
         { email },
         { 
           $addToSet: { borrowedUmbrellas: umbrellaNumber },
-          $set: { updatedAt: new Date() }
+          $set: { 
+            [`borrowDates.${umbrellaNumber}`]: borrowDate,
+            [`dueDates.${umbrellaNumber}`]: dueDate,
+            updatedAt: new Date()
+          }
         },
         { upsert: true, new: true }
       );
 
-      this.lastRfidUser = null;
+      await this.checkOverdueStatus(email);
 
       return {
         success: true,
@@ -144,6 +172,8 @@ export class BorrowService implements OnModuleInit {
         email: email,
         umbrellaNumber: umbrellaNumber,
         borrowedUmbrellas: borrowHistory.borrowedUmbrellas,
+        borrowDate: borrowDate,
+        dueDate: dueDate,
         updatedAt: borrowHistory.updatedAt
       };
     } catch (error) {
@@ -163,6 +193,11 @@ export class BorrowService implements OnModuleInit {
       if (this.currentStatus[umbrellaNumber - 1] === 1) {
         throw new BadRequestException('이미 반납된 우산입니다');
       }
+
+      const borrowHistory = await this.borrowHistoryModel.findOne({ email });
+      const dueDate = borrowHistory?.dueDates?.get(umbrellaNumber.toString());
+      const isOverdue = dueDate && new Date() > dueDate;
+
       this.currentStatus[umbrellaNumber - 1] = 1;
       await this.statusModel.updateOne(
         { umbrellaNumber },
@@ -175,24 +210,30 @@ export class BorrowService implements OnModuleInit {
         { $pull: { borrowedItems: umbrellaNumber } }
       );
 
-      const borrowHistory = await this.borrowHistoryModel.findOneAndUpdate(
+      const updatedHistory = await this.borrowHistoryModel.findOneAndUpdate(
         { email },
         { 
-          $pull: { borrowedUmbrellas: umbrellaNumber },
+          $pull: { 
+            borrowedUmbrellas: umbrellaNumber,
+            overdueUmbrellas: umbrellaNumber
+          },
+          $unset: { 
+            [`borrowDates.${umbrellaNumber}`]: "",
+            [`dueDates.${umbrellaNumber}`]: ""
+          },
           $set: { updatedAt: new Date() }
         },
         { new: true }
       );
 
-      this.lastRfidUser = null;
-
       return {
         success: true,
-        message: `${umbrellaNumber}번 우산이 성공적으로 반납되었습니다.`,
+        message: `${umbrellaNumber}번 우산이 성공적으로 반납되었습니다.${isOverdue ? ' (연체)' : ''}`,
         email: email,
         umbrellaNumber: umbrellaNumber,
-        borrowedUmbrellas: borrowHistory?.borrowedUmbrellas || [],
-        updatedAt: borrowHistory?.updatedAt || new Date()
+        borrowedUmbrellas: updatedHistory?.borrowedUmbrellas || [],
+        isOverdue: isOverdue,
+        updatedAt: updatedHistory?.updatedAt || new Date()
       };
     } catch (error) {
       this.lastRfidUser = null;
