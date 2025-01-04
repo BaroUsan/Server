@@ -6,7 +6,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
 app.enableCors({
-  origin: ['http://localhost:3000', 'https://localhost:7114'], 
+  origin: true, 
   methods: 'GET,POST,PUT,DELETE,OPTIONS', 
   allowedHeaders: 'Content-Type, Authorization', 
   credentials: true, 
@@ -16,7 +16,7 @@ app.enableCors({
   const config = new DocumentBuilder()
     .setTitle('바로우산 API')
     .setDescription('바로우산은 부산소프트웨어마이스터고등학교 우산 대여 플랫폼입니다.')
-    .setVersion('0.9')
+    .setVersion('1.0')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('/', app, document);
