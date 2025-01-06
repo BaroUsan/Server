@@ -61,4 +61,3 @@ export class BorrowController {
     return this.borrowService.returnUmbrella(this.borrowService.lastRfidUser, umbrellaNumber);
   }
 }
-  

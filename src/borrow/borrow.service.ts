@@ -3,14 +3,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Status } from './schemas/status.schema';
 import { User } from './schemas/user.schema';
-import * as mqtt from 'mqtt';
 import { ConfigService } from '@nestjs/config';
-import { MqttClient } from 'mqtt';
 import { BorrowHistory } from './schemas/borrow-history.schema';
+import { SerialPort } from 'serialport'; // SerialPort 수정
+import { ReadlineParser } from '@serialport/parser-readline';
 
 @Injectable()
 export class BorrowService implements OnModuleInit {
-  private client: MqttClient;
+  private serialPort: SerialPort;
+  private parser: ReadlineParser;
   public lastRfidUser: string | null = null;
   private readonly logger = new Logger(BorrowService.name);
   private currentStatus: number[] = [];
@@ -21,20 +22,31 @@ export class BorrowService implements OnModuleInit {
     @InjectModel(BorrowHistory.name) private borrowHistoryModel: Model<BorrowHistory>,
     private configService: ConfigService,
   ) {
-    const brokerUrl = this.configService.get<string>('MQTT_BROKER_URL');
-    this.client = mqtt.connect(brokerUrl, {
-      clientId: `borrow_service_${Math.random().toString(16).slice(2, 8)}`,
-      clean: true,
-      connectTimeout: 4000,
-      reconnectPeriod: 1000,
+    // 수정: SerialPort 초기화 방법 변경
+    const serialPortOptions = {
+      path: '/dev/ttyUSB0', // 시리얼 포트 경로
+      baudRate: 115200,      // 보드 레이트
+    };
+
+    this.serialPort = new SerialPort(serialPortOptions); // 옵션 객체 사용
+
+    this.parser = this.serialPort.pipe(new ReadlineParser());
+
+    this.serialPort.on('open', () => {
+      this.logger.log('시리얼 포트가 열렸습니다');
     });
 
-    this.client.on('connect', () => {
-      this.logger.log('MQTT 브로커에 연결되었습니다');
+    this.serialPort.on('error', (error) => {
+      this.logger.error('시리얼 통신 오류:', error);
     });
 
-    this.client.on('error', (error) => {
-      this.logger.error('MQTT 연결 오류:', error);
+    this.parser.on('data', async (data: string) => {
+      this.logger.log('시리얼 데이터 수신:', data);
+      try {
+        await this.handleRfidData(data);
+      } catch (error) {
+        this.logger.error('데이터 처리 중 오류 발생:', error);
+      }
     });
   }
 
@@ -44,36 +56,10 @@ export class BorrowService implements OnModuleInit {
         .sort({ umbrellaNumber: 1 })
         .exec();
       this.currentStatus = statusDocs.map(doc => doc.status);
-      
+
       this.logger.log('MongoDB에서 가져온 우산 상태:');
       statusDocs.forEach(doc => {
         this.logger.log(`우산 ${doc.umbrellaNumber}번: 상태=${doc.status}`);
-      });
-
-      const rfidTopic = this.configService.get<string>('MQTT_TOPIC_RFID');
-      const statusTopic = this.configService.get<string>('MQTT_TOPIC');
-
-      this.client.subscribe(rfidTopic, (err) => {
-        if (!err) {
-          this.logger.log(`${rfidTopic} 토픽 구독 시작`);
-        }
-      });
-
-      this.client.subscribe(statusTopic, (err) => {
-        if (!err) {
-          this.logger.log(`${statusTopic} 토픽 구독 시작`);
-        }
-      });
-
-      this.client.on('message', async (topic, message) => {
-        this.logger.log(`토픽 ${topic}에서 메시지 수신: ${message.toString()}`);
-        try {
-          if (topic === rfidTopic) {
-            await this.handleRfidMessage(message);
-          }
-        } catch (error) {
-          this.logger.error('메시지 처리 중 오류 발생:', error);
-        }
       });
 
     } catch (error) {
@@ -82,25 +68,48 @@ export class BorrowService implements OnModuleInit {
     }
   }
 
-  private checkRfidMatch(message: Buffer): boolean {
-    const rfidPattern = '0x23 0x24 0x24 0xC6';
-    const receivedMessage = message.toString().trim();
-    this.logger.log(`RFID 패턴 비교 - 수신: "${receivedMessage}", 기대값: "${rfidPattern}"`);
-    return receivedMessage === rfidPattern;
+  private async sendSerialData(data: string) {
+    return new Promise((resolve, reject) => {
+      this.serialPort.write(data, (error) => {
+        if (error) {
+          this.logger.error('시리얼 데이터 전송 오류:', error);
+          reject(error);
+        } else {
+          this.logger.log('시리얼 데이터 전송 성공:', data);
+          resolve(true);
+        }
+      });
+    });
   }
 
-  private async handleRfidMessage(message: Buffer) {
-    if (this.checkRfidMatch(message)) {
-      this.lastRfidUser = '2@bssm.hs.kr';
+  private checkRfidMatch(receivedRfid: string): boolean {
+    const expectedRfid = '123456789012';
+    this.logger.log(`RFID 패턴 비교 - 수신: "${receivedRfid}", 기대값: "${expectedRfid}"`);
+    return receivedRfid.trim() === expectedRfid;
+  }
+
+  private async handleRfidData(data: string) {
+    if (this.checkRfidMatch(data)) {
+      this.lastRfidUser = '2@bssm.hs.kr'; // 테스트용
       const user = await this.userModel.findOne({ email: this.lastRfidUser }).exec();
+
       if (user) {
         this.logger.log(`RFID 인증 성공! 사용자: ${this.lastRfidUser}`);
+
+        // 사용자의 대여 이력 확인
+        const borrowHistory = await this.borrowHistoryModel.findOne({ email: this.lastRfidUser }).exec();
+
+        if (borrowHistory && borrowHistory.borrowedUmbrellas && borrowHistory.borrowedUmbrellas.length > 0) {
+          // 빌린 우산이 있으면 반납 처리
+          const umbrellaToReturn = borrowHistory.borrowedUmbrellas[0];
+          await this.returnUmbrella(this.lastRfidUser);
+        }
       } else {
         this.logger.warn(`RFID 인증 실패: 사용자 ${this.lastRfidUser}가 존재하지 않습니다`);
         this.lastRfidUser = null;
       }
     } else {
-      this.logger.warn(`RFID 인증 실패: ${message.toString()}`);
+      this.logger.warn(`RFID 인증 실패: ${data}`);
     }
   }
 
@@ -139,6 +148,14 @@ export class BorrowService implements OnModuleInit {
       const dueDate = new Date(borrowDate);
       dueDate.setDate(dueDate.getDate() + 3);
 
+      // 시리얼 통신으로 우산 번호만 전송
+      try {
+        await this.sendSerialData(umbrellaNumber.toString());
+      } catch (error) {
+        this.logger.error('우산 번호 전송 실패:', error);
+        throw new BadRequestException('우산 대여 시스템과 통신 중 오류가 발생했습니다');
+      }
+
       this.currentStatus[umbrellaNumber - 1] = 0;
       await this.statusModel.updateOne(
         { umbrellaNumber },
@@ -153,9 +170,9 @@ export class BorrowService implements OnModuleInit {
 
       const borrowHistory = await this.borrowHistoryModel.findOneAndUpdate(
         { email },
-        { 
+        {
           $addToSet: { borrowedUmbrellas: umbrellaNumber },
-          $set: { 
+          $set: {
             [`borrowDates.${umbrellaNumber}`]: borrowDate,
             [`dueDates.${umbrellaNumber}`]: dueDate,
             updatedAt: new Date()
@@ -183,20 +200,28 @@ export class BorrowService implements OnModuleInit {
     }
   }
 
-  async returnUmbrella(email: string, umbrellaNumber: number) {
+  async returnUmbrella(email: string, umbrellaNumber?: number) {
     try {
       const user = await this.userModel.findOne({ email }).exec();
       if (!user) {
         throw new NotFoundException('사용자를 찾을 수 없습니다');
       }
 
-      if (this.currentStatus[umbrellaNumber - 1] === 1) {
-        throw new BadRequestException('이미 반납된 우산입니다');
+      const borrowHistory = await this.borrowHistoryModel.findOne({ email }).exec();
+      if (!borrowHistory || !borrowHistory.borrowedUmbrellas || borrowHistory.borrowedUmbrellas.length === 0) {
+        throw new BadRequestException('반납할 우산이 없습니다');
       }
 
-      const borrowHistory = await this.borrowHistoryModel.findOne({ email });
-      const dueDate = borrowHistory?.dueDates?.get(umbrellaNumber.toString());
+      const umbrellaNumber = borrowHistory.borrowedUmbrellas[0];
+      const dueDate = borrowHistory.dueDates?.get(umbrellaNumber.toString());
       const isOverdue = dueDate && new Date() > dueDate;
+
+      try {
+        await this.sendSerialData(umbrellaNumber.toString());
+      } catch (error) {
+        this.logger.error('우산 번호 전송 실패:', error);
+        throw new BadRequestException('우산 반납 시스템과 통신 중 오류가 발생했습니다');
+      }
 
       this.currentStatus[umbrellaNumber - 1] = 1;
       await this.statusModel.updateOne(
@@ -212,12 +237,12 @@ export class BorrowService implements OnModuleInit {
 
       const updatedHistory = await this.borrowHistoryModel.findOneAndUpdate(
         { email },
-        { 
-          $pull: { 
+        {
+          $pull: {
             borrowedUmbrellas: umbrellaNumber,
             overdueUmbrellas: umbrellaNumber
           },
-          $unset: { 
+          $unset: {
             [`borrowDates.${umbrellaNumber}`]: "",
             [`dueDates.${umbrellaNumber}`]: ""
           },
