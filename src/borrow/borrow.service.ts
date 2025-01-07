@@ -87,7 +87,7 @@ export class BorrowService implements OnModuleInit {
       '174112147238': '2023042@bssm.hs.kr',
       '109000052096': '2023009@bssm.hs.kr',
       '172184247114': '2023048@bssm.hs.kr',
-      '044199227113': '2023036@bssm.hs.kr',
+      '044199227113': '2@bssm.hs.kr',
       '158017134238': '2023043@bssm.hs.kr'
     };
     
