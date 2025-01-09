@@ -24,7 +24,7 @@ export class BorrowService implements OnModuleInit {
   ) {
     // 수정: SerialPort 초기화 방법 변경
     const serialPortOptions = {
-      path: '/dev/ttyUSB0', // 시리얼 포트 경로
+      path: '/dev/ttyACM0', // 시리얼 포트 경로
       baudRate: 115200,      // 보드 레이트
     };
 
